@@ -1,0 +1,27 @@
+# Copy to setup.conf, fill in, then run ./setup.sh
+# Anything left empty is asked for interactively.
+
+# Hostname of the mail server. An A record for this must point here.
+MAIL_HOSTNAME=mail.yourserver.tld
+
+# Domains to receive mail for, space- or comma-separated.
+DOMAINS="yourserver.tld anotherdomain.com"
+
+# Browser webmail (SnappyMail + nginx + Let's Encrypt). Needs ports 80 and 443.
+INSTALL_WEBMAIL=yes
+
+# For Let's Encrypt expiry notices. Optional.
+LETSENCRYPT_EMAIL=
+
+# Mailboxes to create during setup. 0 = none, add them later with
+# ./create-mailboxes.sh <count>
+INITIAL_MAILBOXES=0
+
+# Delete mail older than this many days, daily. 0 = keep forever.
+RETENTION_DAYS=30
+
+# Days of daily database backups to keep in /var/backups/maddy. 0 = off.
+BACKUP_DAYS=7
+
+# Automatic security updates (unattended-upgrades).
+AUTO_UPDATES=yes

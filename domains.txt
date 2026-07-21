@@ -1,0 +1,1 @@
+# One domain per line. Managed by setup.sh and manage-domains.sh.
