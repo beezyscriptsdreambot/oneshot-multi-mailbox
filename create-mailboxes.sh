@@ -82,8 +82,13 @@ pick() { printf '%s' "${NAMES[$(( (RANDOM * 32768 + RANDOM) % TOTAL ))]}"; }
 
 # --- existing accounts -----------------------------------------------------
 
-mkdir -p /run/maddy; chown maddy:maddy /run/maddy
-mc() { runuser -u maddy -- maddy "$@"; }
+# stopping maddy wipes /run/maddy (systemd RuntimeDirectory=), and the maddy
+# user can't recreate it itself - so make sure it's there on every call
+mc() {
+  mkdir -p /run/maddy 2>/dev/null || true
+  chown maddy:maddy /run/maddy 2>/dev/null || true
+  runuser -u maddy -- maddy "$@"
+}
 
 declare -A TAKEN
 while IFS= read -r acct; do
@@ -118,14 +123,25 @@ while [[ $created -lt $COUNT ]]; do
   [[ -n "${TAKEN[$addr]:-}" ]] && continue
 
   pw="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9')"; pw="${pw:0:20}"
-  if ! mc imap-acct create "$addr" >/dev/null 2>&1; then
-    # already in storage but not in creds, or something else went wrong
-    TAKEN["$addr"]=1
-    continue
+
+  # only "already exists" counts as a collision - anything else is a real
+  # failure and would otherwise look like an endless string of collisions
+  if ! err="$(mc imap-acct create "$addr" 2>&1)"; then
+    if printf '%s' "$err" | grep -qi 'exist'; then
+      TAKEN["$addr"]=1; continue
+    fi
+    die "could not create mailbox $addr:
+$err"
   fi
-  if ! mc creds create --password "$pw" "$addr" >/dev/null 2>&1; then
-    printf '%s\n%s\n' "$pw" "$pw" | mc creds create "$addr" >/dev/null 2>&1 \
-      || { TAKEN["$addr"]=1; continue; }
+  if ! err="$(mc creds create --password "$pw" "$addr" 2>&1)"; then
+    if printf '%s' "$err" | grep -qi 'exist'; then
+      TAKEN["$addr"]=1; continue
+    fi
+    # older builds want the password on stdin instead of --password
+    if ! err="$(printf '%s\n%s\n' "$pw" "$pw" | mc creds create "$addr" 2>&1)"; then
+      die "could not set the password for $addr:
+$err"
+    fi
   fi
 
   printf '%s:%s\n' "$addr" "$pw" >> "$OUT_FILE"
