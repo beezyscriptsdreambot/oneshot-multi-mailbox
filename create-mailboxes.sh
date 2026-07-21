@@ -148,11 +148,36 @@ $err"
   TAKEN["$addr"]=1
   created=$(( created + 1 ))
   di=$(( di + 1 ))
+  [[ -z "${VERIFY_ACCT:-}" ]] && { VERIFY_ACCT="$addr"; VERIFY_PW="$pw"; }
   printf '  %s:%s\n' "$addr" "$pw"
 done
 
 chown -R maddy:maddy /var/lib/maddy
 chmod 600 "$OUT_FILE"
+
+# creating an account and being able to log in are two different things, so
+# actually try one over IMAP instead of assuming it worked
+restart_maddy
+if [[ -n "${VERIFY_ACCT:-}" ]] && command -v python3 >/dev/null 2>&1; then
+  for _ in 1 2 3 4 5; do systemctl is-active --quiet maddy && break; sleep 1; done
+  echo
+  echo "Checking IMAP login for ${VERIFY_ACCT}..."
+  if python3 - "$VERIFY_ACCT" "$VERIFY_PW" <<'PY' 2>/dev/null
+import imaplib, ssl, sys
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+M = imaplib.IMAP4_SSL("127.0.0.1", 993, ssl_context=ctx)
+M.login(sys.argv[1], sys.argv[2])
+M.select("INBOX")
+M.logout()
+PY
+  then
+    echo "  works - use the full address as the username."
+  else
+    echo "  WARNING: login failed. Check: journalctl -u maddy -n 30 --no-pager" >&2
+  fi
+fi
 
 echo
 echo "Created $created mailbox(es) in $attempts draw(s)."

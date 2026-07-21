@@ -156,6 +156,9 @@ Each run:
 - generates a 20-character random password
 - **appends** the login to `mailboxes.txt` as `email:password`
 
+At the end it logs into one of the new mailboxes over IMAP to confirm the
+password actually works, instead of assuming the account creation succeeded.
+
 ```
 mariesmith@example.com:kP3nQx8ZmR2vLtY7bW4s
 johndoe@example.com:aB9cD1eF2gH3iJ4kL5mN
@@ -186,7 +189,20 @@ password from `mailboxes.txt`.
 | Password | from `mailboxes.txt` |
 | Certificate | trusted (Let's Encrypt) if webmail was installed, otherwise self-signed |
 
-Every user only sees their own mailbox.
+Every user only sees their own mailbox. The username is always the **full
+address** — not just the part before the `@`.
+
+Test a login from the server at any time:
+
+```bash
+line=$(head -1 mailboxes.txt); user="${line%%:*}"; pass="${line#*:}"
+python3 - "$user" "$pass" <<'EOF'
+import imaplib, ssl, sys
+ctx = ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE
+M = imaplib.IMAP4_SSL("127.0.0.1", 993, ssl_context=ctx)
+M.login(sys.argv[1], sys.argv[2]); print("LOGIN OK"); M.select("INBOX"); M.logout()
+EOF
+```
 
 ---
 
