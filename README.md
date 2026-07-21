@@ -26,7 +26,7 @@ cd oneshot-multi-mailbox
 chmod +x setup.sh create-mailboxes.sh delete-mailboxes.sh manage-domains.sh
 sudo ./setup.sh                   # installs everything
 sudo ./create-mailboxes.sh 50     # creates 50 mailboxes
-cat mailboxes.txt                 # email:password, one per line
+sudo cat mailboxes.txt            # email:password, one per line
 ```
 
 The scripts need root — run them with `sudo` (or as root, then drop the `sudo`).
@@ -172,6 +172,53 @@ handled anyway.
 > `mailboxes.txt` is the only place the passwords exist in readable form. Maddy
 > stores them hashed. Keep the file safe — it's in `.gitignore`.
 
+### Show the logins
+
+The file is owned by root with `chmod 600`, so **`sudo` is needed** — a plain
+`cat mailboxes.txt` gives "Permission denied".
+
+```bash
+cd ~/oneshot-multi-mailbox
+
+sudo cat mailboxes.txt                      # all logins
+sudo tail -20 mailboxes.txt                 # the 20 newest
+sudo head -1 mailboxes.txt                  # just one, e.g. for a quick test
+sudo grep '@example.com:' mailboxes.txt     # only one domain
+sudo wc -l mailboxes.txt                    # how many there are
+```
+
+Nicer to read (address and password in two columns):
+
+```bash
+sudo column -t -s: mailboxes.txt
+```
+
+> Careful with redirects: `sudo wc -l < mailboxes.txt` fails, because the `<`
+> is done by your shell, not by sudo. Pass the file as an argument instead.
+
+Split into address and password separately:
+
+```bash
+sudo cut -d: -f1 mailboxes.txt              # addresses only
+sudo cut -d: -f2 mailboxes.txt              # passwords only
+```
+
+### Copy the file to your own computer
+
+`scp` runs as your login user and can't read a root-owned 0600 file, so make a
+readable copy first:
+
+```bash
+# on the server
+sudo cp mailboxes.txt /tmp/mailboxes.txt && sudo chown $USER /tmp/mailboxes.txt
+
+# on your own machine
+scp ubuntu@<server-ip>:/tmp/mailboxes.txt .
+
+# back on the server, clean up - it's world-readable in /tmp otherwise
+rm -f /tmp/mailboxes.txt
+```
+
 ---
 
 ## 4b. Delete mailboxes
@@ -271,20 +318,20 @@ journalctl -u maddy-cleanup -n 20
 # which domains are configured?
 grep local_domains /etc/maddy/maddy.conf
 
-# which mailboxes exist?
-runuser -u maddy -- maddy creds list
-runuser -u maddy -- maddy creds list | wc -l
+# which mailboxes exist? (runuser needs root)
+sudo runuser -u maddy -- maddy creds list
+sudo runuser -u maddy -- maddy creds list | wc -l
 
-# all logins
-cat mailboxes.txt
+# all logins (file is root-owned, 0600)
+sudo cat mailboxes.txt
 
 # reset one password (takes effect immediately)
-runuser -u maddy -- maddy creds password --password 'NEWPASS' user@example.com
+sudo runuser -u maddy -- maddy creds password --password 'NEWPASS' user@example.com
 
 # status, logs, listening ports
 systemctl status maddy
-journalctl -u maddy -f
-ss -tlnp '( sport = :25 or sport = :993 )'
+sudo journalctl -u maddy -f
+sudo ss -tlnp '( sport = :25 or sport = :993 )'
 
 # does everything come back after a reboot?
 systemctl is-enabled maddy nginx certbot.timer maddy-cleanup.timer
