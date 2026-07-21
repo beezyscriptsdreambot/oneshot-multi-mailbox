@@ -23,7 +23,7 @@ On a fresh server:
 sudo apt-get update && sudo apt-get install -y git
 git clone https://github.com/beezyscriptsdreambot/oneshot-multi-mailbox.git
 cd oneshot-multi-mailbox
-chmod +x setup.sh create-mailboxes.sh manage-domains.sh
+chmod +x setup.sh create-mailboxes.sh delete-mailboxes.sh manage-domains.sh
 sudo ./setup.sh                   # installs everything
 sudo ./create-mailboxes.sh 50     # creates 50 mailboxes
 cat mailboxes.txt                 # email:password, one per line
@@ -171,6 +171,21 @@ handled anyway.
 
 > `mailboxes.txt` is the only place the passwords exist in readable form. Maddy
 > stores them hashed. Keep the file safe — it's in `.gitignore`.
+
+---
+
+## 4b. Delete mailboxes
+
+```bash
+sudo ./delete-mailboxes.sh --list                    # what exists
+sudo ./delete-mailboxes.sh user@example.com          # one or more addresses
+sudo ./delete-mailboxes.sh --domain example.com      # every mailbox of a domain
+sudo ./delete-mailboxes.sh --all                     # everything
+```
+
+Deleting removes the mailbox **and all mail in it**, and drops the line from
+`mailboxes.txt`. You get a confirmation prompt first — add `--yes` to skip it
+(for scripts).
 
 ---
 
@@ -356,6 +371,7 @@ sudo ./setup.sh
 |------|---------|
 | `setup.sh` | One-shot installer — mail server + optional webmail |
 | `create-mailboxes.sh` | Create N mailboxes from `names.txt` |
+| `delete-mailboxes.sh` | Delete mailboxes (single, per domain, or all) |
 | `manage-domains.sh` | Add/remove/list domains |
 | `setup.conf.example` | Config template (copy to `setup.conf`) |
 | `names.txt` | ~195,000 names used to build addresses |
