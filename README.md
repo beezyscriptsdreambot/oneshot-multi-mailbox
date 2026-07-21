@@ -17,17 +17,19 @@ Runs [Maddy](https://maddy.email) natively (no Docker) — around 50–200 MB RA
 
 ## Quick start
 
-On a fresh server, as **root**:
+On a fresh server:
 
 ```bash
-apt-get update && apt-get install -y git
+sudo apt-get update && sudo apt-get install -y git
 git clone https://github.com/beezyscriptsdreambot/oneshot-multi-mailbox.git
 cd oneshot-multi-mailbox
 chmod +x setup.sh create-mailboxes.sh manage-domains.sh
-./setup.sh                      # installs everything
-./create-mailboxes.sh 50        # creates 50 mailboxes
-cat mailboxes.txt               # email:password, one per line
+sudo ./setup.sh                   # installs everything
+sudo ./create-mailboxes.sh 50     # creates 50 mailboxes
+cat mailboxes.txt                 # email:password, one per line
 ```
+
+The scripts need root — run them with `sudo` (or as root, then drop the `sudo`).
 
 **Set your DNS first** (step 2) — otherwise no mail can reach the server.
 
@@ -100,7 +102,7 @@ SPF/DKIM/DMARC and reverse DNS only matter for *sending*.
 ## 3. Run the setup
 
 ```bash
-./setup.sh
+sudo ./setup.sh
 ```
 
 It asks for everything it needs:
@@ -120,7 +122,7 @@ Prefer a config file? Fill it in beforehand and nothing is asked:
 ```bash
 cp setup.conf.example setup.conf
 nano setup.conf
-./setup.sh
+sudo ./setup.sh
 ```
 
 The setup then:
@@ -142,9 +144,9 @@ Re-running is safe: existing mailboxes keep their passwords.
 ## 4. Create mailboxes
 
 ```bash
-./create-mailboxes.sh 50                  # the only configured domain
-./create-mailboxes.sh 50 example.com      # a specific domain
-./create-mailboxes.sh 50 --all            # spread across all domains
+sudo ./create-mailboxes.sh 50                  # the only configured domain
+sudo ./create-mailboxes.sh 50 example.com      # a specific domain
+sudo ./create-mailboxes.sh 50 --all            # spread across all domains
 ```
 
 Each run:
@@ -191,13 +193,13 @@ Every user only sees their own mailbox.
 ## 6. Add or remove domains
 
 ```bash
-./manage-domains.sh list                  # domains + mailbox counts
-./manage-domains.sh add    newdomain.com
-./manage-domains.sh remove olddomain.com  # deletes its mailboxes and mail!
+sudo ./manage-domains.sh list                  # domains + mailbox counts
+sudo ./manage-domains.sh add    newdomain.com
+sudo ./manage-domains.sh remove olddomain.com  # deletes its mailboxes and mail!
 ```
 
 Adding a domain only makes Maddy accept mail for it — create the mailboxes
-afterwards with `./create-mailboxes.sh <count> newdomain.com`. The webmail needs
+afterwards with `sudo ./create-mailboxes.sh <count> newdomain.com`. The webmail needs
 no change; it routes every domain to the local Maddy.
 
 Don't forget the **MX record** for each new domain.
@@ -295,7 +297,7 @@ means something actively rejects them (typical for a provider port-25 block).
 Port 25 is closed. Everything else can be perfect and the mailbox stays empty.
 
 **Mail bounces with "User does not exist"**
-That address has no mailbox. Create it with `./create-mailboxes.sh`, or check
+That address has no mailbox. Create it with `sudo ./create-mailboxes.sh`, or check
 the exact spelling in `mailboxes.txt`.
 
 **Downloads hang for minutes / `connection timed out`**
@@ -308,7 +310,7 @@ echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
 ```bash
 ss -tlnp '( sport = :25 or sport = :80 or sport = :443 )'
 systemctl disable --now apache2   # or nginx / postfix / dovecot
-./setup.sh
+sudo ./setup.sh
 ```
 
 **Locked out of SSH** (`ssh` hangs) — a firewall blocks port 22, or the box is
@@ -327,7 +329,7 @@ The SnappyMail domain config is incomplete — re-run `./setup.sh`, it rewrites
 ```bash
 systemctl stop maddy
 rm -f /var/lib/maddy/*.db mailboxes.txt
-./setup.sh
+sudo ./setup.sh
 ```
 
 ---
