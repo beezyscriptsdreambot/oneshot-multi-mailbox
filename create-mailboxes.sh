@@ -72,6 +72,7 @@ TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 # drop anything with apostrophes, hyphens or fewer than MIN_NAME_LEN letters
 grep -E "^[A-Za-z]{${MIN_NAME_LEN},}$" "$NAMES_FILE" | tr 'A-Z' 'a-z' | sort -u > "$TMP"
+NAMES=()
 mapfile -t NAMES < "$TMP"
 TOTAL=${#NAMES[@]}
 [[ $TOTAL -gt 1 ]] || die "$NAMES_FILE has no usable names."
@@ -90,7 +91,7 @@ mc() {
   runuser -u maddy -- maddy "$@"
 }
 
-declare -A TAKEN
+declare -A TAKEN=()
 while IFS= read -r acct; do
   acct="$(printf '%s' "$acct" | tr -d '[:space:]' | tr 'A-Z' 'a-z')"
   [[ -n "$acct" ]] && TAKEN["$acct"]=1
