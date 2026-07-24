@@ -16,7 +16,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 CONF="/etc/maddy/maddy.conf"
-OUT_FILE="$SCRIPT_DIR/mailboxes.txt"
+MAILBOX_DIR="$SCRIPT_DIR/mailboxes"
+LEGACY_FILE="$SCRIPT_DIR/mailboxes.txt"   # what older versions wrote
+
+# every dated batch file, plus the old single file if it's still around
+login_files() {
+  [[ -f "$LEGACY_FILE" ]] && printf '%s\n' "$LEGACY_FILE"
+  [[ -d "$MAILBOX_DIR" ]] && find "$MAILBOX_DIR" -maxdepth 1 -type f -name '*.txt' | sort
+  return 0
+}
 
 usage() {
   echo "Usage:"
@@ -154,11 +162,14 @@ if [[ "$CMD" == "remove" ]]; then
       echo "  - removed $acct"
     done < <(mc creds list 2>/dev/null | grep "@${d}\$" || true)
 
-    if [[ -f "$OUT_FILE" ]]; then
+    while IFS= read -r f; do
+      [[ -n "$f" && -f "$f" ]] || continue
       tmp="$(mktemp)"
-      grep -v "@${d}:" "$OUT_FILE" > "$tmp" || true
-      mv "$tmp" "$OUT_FILE"
-    fi
+      grep -v "@${d}:" "$f" > "$tmp" || true
+      mv "$tmp" "$f"
+      chmod 600 "$f"
+      [[ -s "$f" ]] || rm -f "$f"
+    done < <(login_files)
   done
   echo
   echo "Removed ${#REMOVE[@]} domain(s). You can delete their MX records at the registrar."

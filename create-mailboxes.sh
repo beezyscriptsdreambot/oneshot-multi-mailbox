@@ -7,8 +7,9 @@
 #   ./create-mailboxes.sh 50 --all           # spread over all domains
 #
 # Addresses are two names glued together (mariesmith@example.com). Existing
-# addresses are skipped and a new one is drawn instead. Logins are appended to
-# mailboxes.txt as email:password, one per line.
+# addresses are skipped and a new one is drawn instead. Logins go to
+# mailboxes/mailboxes-YYYY-MM-DD.txt as email:password, one per line - one file
+# per day, so each batch stays separate.
 
 set -euo pipefail
 
@@ -19,7 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 NAMES_FILE="names.txt"
-OUT_FILE="mailboxes.txt"
+MAILBOX_DIR="mailboxes"
+OUT_FILE="${MAILBOX_DIR}/mailboxes-$(date +%F).txt"
 MIN_NAME_LEN=3
 MAX_ATTEMPT_FACTOR=50   # give up after count*this draws
 
@@ -109,6 +111,10 @@ trap 'rm -f "$TMP"; restart_maddy' EXIT
 # stop maddy so the CLI doesn't fight it over the sqlite files
 systemctl stop maddy 2>/dev/null || true
 
+# one file per day - a second run on the same day appends to it
+mkdir -p "$MAILBOX_DIR"
+chmod 700 "$MAILBOX_DIR"
+
 created=0
 attempts=0
 max_attempts=$(( COUNT * MAX_ATTEMPT_FACTOR ))
@@ -182,5 +188,7 @@ fi
 
 echo
 echo "Created $created mailbox(es) in $attempts draw(s)."
-echo "Logins appended to $(pwd)/$OUT_FILE"
+echo "Logins written to $(pwd)/$OUT_FILE"
+echo "  today's batch : sudo cat $OUT_FILE"
+echo "  every batch   : sudo cat ${MAILBOX_DIR}/*.txt"
 echo "Log in at the webmail or over IMAP with the full address as username."

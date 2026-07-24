@@ -25,3 +25,16 @@ BACKUP_DAYS=7
 
 # Automatic security updates (unattended-upgrades).
 AUTO_UPDATES=yes
+
+# Turn on the ufw firewall and allow only the ports this setup needs
+# (SSH, 25, 143, 993, plus 80/443 with webmail). Set to no to leave the
+# firewall alone - e.g. if you manage it yourself or only in the VPS panel.
+ENABLE_FIREWALL=yes
+
+# SSH port that stays open when the firewall is switched on. Leave empty and
+# setup.sh reads it from sshd_config. A wrong value here locks you out.
+SSH_PORT=22
+
+# fail2ban: bans an IP for an hour after 5 failed SSH or IMAP logins in
+# 10 minutes. Without it, nothing limits password guessing.
+INSTALL_FAIL2BAN=yes

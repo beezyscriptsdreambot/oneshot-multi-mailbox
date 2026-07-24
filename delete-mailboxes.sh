@@ -8,16 +8,25 @@
 #   ./delete-mailboxes.sh --all
 #
 # This deletes the mailbox and everything stored in it. Add --yes to skip the
-# confirmation prompt. The addresses are also dropped from mailboxes.txt.
+# confirmation prompt. The addresses are also dropped from every batch file in
+# mailboxes/, so the logins on disk stay in sync.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-OUT_FILE="mailboxes.txt"
+MAILBOX_DIR="mailboxes"
+LEGACY_FILE="mailboxes.txt"      # what older versions wrote everything into
 
 die() { echo "Error: $*" >&2; exit 1; }
+
+# every dated batch file, plus the old single file if it's still around
+login_files() {
+  [[ -f "$LEGACY_FILE" ]] && printf '%s\n' "$LEGACY_FILE"
+  [[ -d "$MAILBOX_DIR" ]] && find "$MAILBOX_DIR" -maxdepth 1 -type f -name '*.txt' | sort
+  return 0
+}
 
 usage() {
   echo "Usage:"
@@ -116,17 +125,31 @@ for addr in "${TARGETS[@]}"; do
     echo "  ? $addr - did not exist"
     missing=$(( missing + 1 ))
   fi
-  # drop it from the list; index()==1 is an exact prefix, so no regex surprises
-  if [[ -f "$OUT_FILE" ]]; then
-    tmp="$(mktemp)"
-    awk -v a="${addr}:" 'index($0, a) != 1' "$OUT_FILE" > "$tmp" || true
-    mv "$tmp" "$OUT_FILE"
-    chmod 600 "$OUT_FILE"
-  fi
 done
 
 chown -R maddy:maddy /var/lib/maddy
 
+# --- drop the addresses from the batch files -------------------------------
+
+PRUNE_LIST="$(mktemp)"
+printf '%s\n' "${TARGETS[@]}" > "$PRUNE_LIST"
+while IFS= read -r f; do
+  [[ -n "$f" && -f "$f" ]] || continue
+  tmp="$(mktemp)"
+  # compare against the part before the first ':' so a password can't match
+  awk -F: 'NR==FNR { gone[$0]=1; next } !($1 in gone)' "$PRUNE_LIST" "$f" > "$tmp" || true
+  mv "$tmp" "$f"
+  chmod 600 "$f"
+  [[ -s "$f" ]] || rm -f "$f"      # an emptied batch file is just noise
+done < <(login_files)
+rm -f "$PRUNE_LIST"
+
+remaining=0
+while IFS= read -r f; do
+  [[ -n "$f" && -f "$f" ]] || continue
+  remaining=$(( remaining + $(grep -c ':' "$f" || true) ))
+done < <(login_files)
+
 echo
 echo "Deleted ${deleted} mailbox(es)$( [[ $missing -gt 0 ]] && echo ", ${missing} did not exist" )."
-[[ -f "$OUT_FILE" ]] && echo "$(grep -c ':' "$OUT_FILE" || true) left in ${OUT_FILE}."
+echo "${remaining} login(s) left in ${MAILBOX_DIR}/."
