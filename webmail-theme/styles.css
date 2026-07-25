@@ -1,0 +1,394 @@
+/* ===========================================================================
+   Nocturne — dark, calm, compact. Accent as a line, not a surface.
+   ---------------------------------------------------------------------------
+   Deployed by ../setup.sh into the webmail's theme folder as "Nocturne".
+   Re-run  sudo ./setup.sh  after editing, then hard-reload (Ctrl+Shift+R).
+
+   The first block is the variable palette, which colours the whole app. The
+   blocks after it shape the login screen specifically, because a few of its
+   details cannot be expressed as variables.
+   =========================================================================== */
+
+/* Bundled, not loaded from a CDN - a login page should not phone home.
+   Variable font: one file covers weights 400-500. latin-ext only downloads
+   when a page actually uses those characters. */
+@font-face {
+	font-family: 'InterLocal';
+	font-style: normal;
+	font-weight: 400 500;
+	font-display: swap;
+	src: url("fonts/inter-latin.woff2") format('woff2');
+	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+	font-family: 'InterLocal';
+	font-style: normal;
+	font-weight: 400 500;
+	font-display: swap;
+	src: url("fonts/inter-latin-ext.woff2") format('woff2');
+	unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+	color-scheme: dark;
+
+	--font: 'InterLocal', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--main-font-size: 13px;
+
+	/* Page */
+	--main-color: #e9e9ed;
+	--main-bg-color: #161826;
+	--main-bg-image: none;
+
+	/* Login box */
+	--login-color: #e9e9ed;
+	--login-bg-color: #232532;
+	--login-border: none;
+	--login-border-radius: 8px;
+	--login-box-shadow: 0 0 0 1px #3f424d, 0 6px 18px rgba(0, 0, 0, .55);
+	--loading-color: #e9e9ed;
+	--loading-text-shadow: none;
+	--spinner-color: #79c2a4;
+
+	/* Inputs */
+	--input-clr: #e9e9ed;
+	--input-bg-clr: #1b1d2b;
+	--input-border-clr: #3f424d;
+	--input-border-radius: 8px;
+	--input-focus-border-clr: #79c2a4;
+
+	/* Buttons */
+	--btn-clr: #e9e9ed;
+	--btn-bg-clr: #2b2e3d;
+	--btn-border-clr: #3f424d;
+	--btn-border-radius: 8px;
+	--btn-success-bg-clr: #3f7a63;
+	--btn-danger-bg-clr: #8c3f45;
+
+	/* Structure */
+	--border-color: #3f424d;
+	--border-radius: 8px;
+	--hr-color: #2f3240;
+	--link-color: #79c2a4;
+
+	/* Folder list */
+	--folders-color: #b2b6ca;
+	--folders-disabled-color: #6c7086;
+	--folders-selected-color: #e9e9ed;
+	--folders-selected-bg-color: #2b2e3d;
+	--folders-focused-color: #e9e9ed;
+	--folders-focused-bg-color: #33364a;
+	--folders-hover-color: #e9e9ed;
+	--folders-hover-bg-color: #262838;
+	--folders-drop-color: #161826;
+	--folders-drop-bg-color: #79c2a4;
+	--unread-count-color: #161826;
+	--unread-count-bg-color: #79c2a4;
+
+	/* Message list and panels */
+	--message-list-toolbar-bg-color: #1b1d2b;
+	--message-header-bg-clr: #1b1d2b;
+	--panel-bg-clr: #232532;
+	--tr-odd-bg-clr: #1e2030;
+	--tr-hover-bg-clr: #2b2e3d;
+
+	/* Menus */
+	--dropdown-menu-color: #e9e9ed;
+	--dropdown-menu-bg-color: #232532;
+	--dropdown-menu-border-clr: #3f424d;
+	--dropdown-menu-hover-color: #161826;
+	--dropdown-menu-hover-bg-color: #79c2a4;
+	--dropdown-menu-disabled-color: #6c7086;
+
+	/* Settings */
+	--settings-menu-color: #b2b6ca;
+	--settings-menu-selected-color: #161826;
+	--settings-menu-selected-bg-color: #79c2a4;
+	--settings-menu-hover-color: #e9e9ed;
+	--settings-menu-hover-bg-color: #2b2e3d;
+	--tab-active-bg-clr: #232532;
+	--tab-hover-border-clr: #3f424d;
+
+	/* Dialogs */
+	--dialog-clr: #e9e9ed;
+	--dialog-bg-clr: #232532;
+	--dialog-border-clr: #3f424d;
+	--dialog-border-radius: 8px;
+
+	/* Status messages */
+	--error-clr: #f2b8b5;
+	--error-bg-clr: rgba(140, 63, 69, .45);
+	--error-border-clr: #8c3f45;
+	--warning-clr: #f0d9a8;
+	--warning-bg-clr: rgba(122, 96, 45, .45);
+	--warning-border-clr: #7a602d;
+	--info-clr: #c9e9da;
+	--info-bg-clr: rgba(45, 74, 63, .45);
+	--info-border-clr: #3f7a63;
+}
+
+/* --- Page background -------------------------------------------------------
+   Set here rather than through --main-bg-image, which the app only applies
+   above 800px wide. This way the gradient is there on phones too. */
+#rl-app {
+	background-color: #161826;
+	background-image: radial-gradient(140% 110% at 50% -10%, #232532 0%, rgba(22, 24, 38, 0) 62%);
+	background-repeat: no-repeat;
+	background-attachment: fixed;
+}
+
+/* --- The two drifting glows -------------------------------------------------
+   Scoped with :has() so they only appear on the login screen and never sit
+   behind the mail interface. Browsers without :has() simply skip them. */
+#rl-app:has(.LoginView)::before,
+#rl-app:has(.LoginView)::after {
+	content: '';
+	position: fixed;
+	left: 50%;
+	pointer-events: none;
+	mix-blend-mode: screen;
+	z-index: 0;
+}
+#rl-app:has(.LoginView)::before {
+	top: 44%;
+	width: 720px;
+	height: 600px;
+	background: radial-gradient(closest-side, rgba(121, 194, 164, .22), rgba(121, 194, 164, .06) 46%, rgba(121, 194, 164, 0) 74%);
+	animation: noc-glow-a 22s ease-in-out infinite;
+}
+#rl-app:has(.LoginView)::after {
+	top: 71%;
+	width: 520px;
+	height: 260px;
+	background: radial-gradient(closest-side, rgba(121, 194, 164, .17), rgba(121, 194, 164, .05) 48%, rgba(121, 194, 164, 0) 76%);
+	animation: noc-glow-b 17s ease-in-out infinite;
+}
+@keyframes noc-glow-a {
+	0%   { transform: translate(-50%, -50%) translate(-30px, -16px) scale(1);    opacity: .80; }
+	50%  { transform: translate(-50%, -50%) translate(26px, 18px)   scale(1.10); opacity: 1; }
+	100% { transform: translate(-50%, -50%) translate(-30px, -16px) scale(1);    opacity: .80; }
+}
+@keyframes noc-glow-b {
+	0%   { transform: translate(-50%, -50%) translate(22px, 6px)   scale(1.06); opacity: .60; }
+	50%  { transform: translate(-50%, -50%) translate(-24px, -8px) scale(.94);  opacity: 1; }
+	100% { transform: translate(-50%, -50%) translate(22px, 6px)   scale(1.06); opacity: .60; }
+}
+
+/* --- Login layout ---------------------------------------------------------- */
+.LoginView {
+	position: relative;
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+	padding: 24px;
+	font-family: var(--font);
+	/* light text on a dark background renders heavy without this */
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+/* The heading. Only rendered when WEBMAIL_LOGIN_TEXT is set in setup.conf -
+   leave it empty and this element, and the accent line above it, disappear. */
+.LoginView .descWrapper {
+	position: relative;
+	width: 396px;
+	max-width: 100%;
+	margin: 0 0 22.4px;
+	padding-top: 18.8px;
+	font-size: 34px;
+	font-weight: 500;
+	line-height: 1.12;
+	letter-spacing: -.02em;
+	text-align: center;
+	color: #e9e9ed;
+	text-shadow: none;
+}
+.LoginView .descWrapper::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 34px;
+	height: 2px;
+	background: #79c2a4;
+}
+
+/* --- The card --------------------------------------------------------------
+   border-box throughout: the app's own layout is content-box, which would add
+   the padding on top of the widths below and push the fields out of the card. */
+.LoginView form,
+.LoginView form *,
+.LoginView .descWrapper,
+.LoginView .alert {
+	box-sizing: border-box;
+}
+.LoginView form {
+	width: 396px;
+	max-width: 100%;
+	padding: 22.4px;
+	background-color: #232532;
+	border: none;
+	border-radius: 8px;
+	box-shadow: 0 0 0 1px #3f424d, 0 6px 18px rgba(0, 0, 0, .55);
+	color: #e9e9ed;
+}
+@media screen and (max-width: 480px) {
+	.LoginView form { padding: 22.4px; }
+}
+.LoginView .controls,
+.LoginView .control-group {
+	margin-bottom: 11.2px;
+}
+
+/* --- Inputs -----------------------------------------------------------------
+   The stock form puts a ✉ / 🔑 glyph inside each field. Nocturne's fields are
+   plain, so the glyph is hidden and the padding it reserved is taken back. */
+.LoginView .controls > .fontastic:first-child {
+	display: none;
+}
+.LoginView input,
+.LoginView .fontastic + input {
+	width: 100%;
+	height: 40px;
+	padding: 0 11.2px;
+	font-family: var(--font);
+	font-size: 14px;
+	color: #e9e9ed;
+	caret-color: #79c2a4;
+	background: #1b1d2b;
+	border: 1px solid #3f424d;
+	border-radius: 8px;
+	outline: none;
+}
+.LoginView input::placeholder {
+	color: #6c7086;
+}
+.LoginView input:hover {
+	border-color: #595d6c;
+}
+.LoginView input:focus {
+	border-color: #79c2a4;
+	box-shadow: 0 0 0 3px rgba(121, 194, 164, .18);
+}
+
+/* --- Checkbox row -----------------------------------------------------------
+   The hairline above it is the design's divider. */
+.LoginView form .e-checkbox {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	font-size: 13px;
+	color: #e9e9ed;
+	user-select: none;
+}
+/* The glyph itself is the checkbox - it swaps between ☐ and ☑ - so it gets no
+   box of its own, or you end up with a square inside a square. */
+.LoginView form .e-checkbox .fontastic {
+	flex: none;
+	font-size: 17px;
+	line-height: 1;
+	font-style: normal;
+	color: #79c2a4;
+}
+.LoginView .controls:has(> .e-checkbox) {
+	padding-top: 16.8px;
+	border-top: 1px solid;
+	border-image: linear-gradient(to right, transparent, rgba(233, 233, 237, .16) 48px, rgba(233, 233, 237, .16) calc(100% - 48px), transparent) 1;
+}
+/* The language switcher is a 🌍 emoji, which renders in full colour and breaks
+   an otherwise monochrome screen. Muted rather than hidden - it still works. */
+.LoginView .language-button {
+	color: #9397ab;
+	filter: grayscale(1);
+	opacity: .55;
+	transition: opacity .15s ease;
+}
+.LoginView .language-button:hover {
+	opacity: 1;
+}
+
+/* --- Sign-in button ---------------------------------------------------------
+   `.LoginView form *` in the app stylesheet paints every child with the login
+   colour, so the accent needs a more specific selector than that. */
+.LoginView form .btn,
+.LoginView form .buttonLogin {
+	width: 100%;
+	height: 42px;
+	margin-top: 5.6px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-family: var(--font);
+	font-size: 14px;
+	font-weight: 500;
+	letter-spacing: .01em;
+	text-transform: none;
+	cursor: pointer;
+	color: #79c2a4;
+	background: transparent;
+	border: 1px solid #79c2a4;
+	border-radius: 8px;
+	transition: background-color .15s ease;
+}
+.LoginView form .btn:hover,
+.LoginView form .buttonLogin:hover {
+	background: rgba(121, 194, 164, .12);
+	border-color: #79c2a4;
+}
+.LoginView form .btn:active,
+.LoginView form .buttonLogin:active {
+	background: rgba(121, 194, 164, .22);
+	border-color: #79c2a4;
+}
+
+/* --- Failed login -----------------------------------------------------------
+   The app parks this absolutely over the card and only fades it out. Taking it
+   into the flow makes it push the card down instead of covering it - but then
+   it has to be pulled out of the flow while hidden, or it reserves its space
+   and leaves a gap above the card. */
+.LoginView .alert[hidden] {
+	display: none;
+}
+.LoginView .alert {
+	position: relative;
+	width: 396px;
+	max-width: 100%;
+	margin-bottom: 11.2px;
+	padding: 8.4px 11.2px;
+	border-radius: 8px;
+	box-shadow: inset 0 0 0 1px #3f7a63;
+	background: rgba(45, 74, 63, .45);
+	font-size: 13px;
+	color: #c9e9da;
+}
+/* The app pushes this 21px past the right edge and gives it a white shadow,
+   both of which assume a light theme. */
+.LoginView .alert .close {
+	position: relative;
+	top: 0;
+	right: 0;
+	color: #c9e9da;
+	text-shadow: none;
+	opacity: .7;
+}
+.LoginView .alert .close:hover {
+	opacity: 1;
+}
+.LoginView form.errorAnimated .buttonLogin {
+	color: #f2b8b5;
+	border-color: #8c3f45;
+}
+
+/* Respect the system setting - the glows hold still for anyone who asked. */
+@media (prefers-reduced-motion: reduce) {
+	#rl-app:has(.LoginView)::before,
+	#rl-app:has(.LoginView)::after {
+		animation: none;
+	}
+}

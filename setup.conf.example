@@ -47,3 +47,22 @@ MAX_MESSAGE_SIZE=5M
 # Cap for the systemd journal. Maddy logs every rejected message, so without a
 # limit the log is a second way to fill the disk.
 JOURNAL_MAX_SIZE=500M
+
+# --- Webmail appearance ------------------------------------------------------
+# Colours, background and layout live in webmail-theme/ - see its README.
+# These four are text settings, not CSS.
+
+# Browser tab title. Empty = "SnappyMail Webmail".
+WEBMAIL_TITLE=
+
+# The heading above the login form. The theme puts its accent line above this,
+# so leaving it out removes both. Empty falls back to "Sign in".
+WEBMAIL_LOGIN_TEXT="Sign in"
+
+# Which theme to activate. Empty = "Nocturne" when webmail-theme/ exists,
+# otherwise SnappyMail's default. Built-ins include Default, Clear, Snow,
+# DarkShine, NightShine, BlackWood.
+WEBMAIL_THEME=
+
+# Favicon path or URL. Empty = SnappyMail's own.
+WEBMAIL_FAVICON=

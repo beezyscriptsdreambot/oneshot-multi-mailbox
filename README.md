@@ -342,6 +342,34 @@ writes the whole domain configuration itself, so nothing there is ever needed �
 and it's disabled (`allow_admin_panel = Off`). One less thing exposed to the
 internet.
 
+---
+
+## 5b. How the webmail looks
+
+The login screen and the mail interface use **Nocturne** — a dark theme with a
+mint accent, installed from [`webmail-theme/`](webmail-theme/) and activated
+automatically by `setup.sh`.
+
+Text settings live in `setup.conf`:
+
+```bash
+WEBMAIL_TITLE="Example Mail"      # browser tab title
+WEBMAIL_LOGIN_TEXT="Sign in"      # heading above the login form
+WEBMAIL_THEME=                    # empty = Nocturne; or Default, Clear, Snow, …
+WEBMAIL_FAVICON=
+```
+
+Colours, spacing and the background are CSS in
+[`webmail-theme/styles.css`](webmail-theme/styles.css). Its
+[README](webmail-theme/README.md) explains what is safe to change.
+
+Inter is bundled in `webmail-theme/fonts/` rather than loaded from Google's CDN,
+so the login page makes no third-party requests.
+
+> **Themes don't survive a SnappyMail update on their own.** They live in
+> SnappyMail's version directory, which an update replaces. `setup.sh` re-copies
+> the folder on every run, so re-run it after updating and the theme is back.
+
 ### Adding them later
 
 Set the values in `setup.conf` and re-run `sudo ./setup.sh` — it only adds what
@@ -593,6 +621,7 @@ sudo ./setup.sh
 | `delete-mailboxes.sh` | Delete mailboxes (single, per domain, or all) |
 | `manage-domains.sh` | Add/remove/list domains |
 | `setup.conf.example` | Config template (copy to `setup.conf`) |
+| `webmail-theme/` | The Nocturne webmail theme — CSS, bundled fonts, its own README |
 | `names.txt` | ~195,000 names used to build addresses |
 | `domains.txt` | Your domains, kept in sync by the scripts |
 | `mailboxes/` | Generated: one `mailboxes-YYYY-MM-DD.txt` per day, `email:password` per line (git-ignored) |

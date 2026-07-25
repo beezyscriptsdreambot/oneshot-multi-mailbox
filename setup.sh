@@ -72,29 +72,29 @@ HOOK
   MAIL_CERT="trusted (Let's Encrypt)"
 }
 
-# set allow_admin_panel = Off without ever duplicating the key or the section
-snappymail_disable_admin() {
-  local f="$1" tmp
+# set one key inside one ini section, without ever duplicating either
+ini_set() {
+  local f="$1" sect="$2" key="$3" val="$4" tmp
   if [[ ! -f "$f" ]]; then
-    printf '[security]\nallow_admin_panel = Off\n' > "$f"
+    printf '[%s]\n%s = %s\n' "$sect" "$key" "$val" > "$f"
     return
   fi
   tmp="$(mktemp)"
-  awk '
+  awk -v sect="[$sect]" -v key="$key" -v val="$val" '
     { lines[NR]=$0 }
-    /^[[:space:]]*allow_admin_panel/ { hit=1 }
-    /^[[:space:]]*\[security\]/      { sec=NR }
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { hit=1 }
+    index($0, sect) == 1 { sec=NR }
     END {
       for (i=1;i<=NR;i++) {
         l=lines[i]
-        if (l ~ /^[[:space:]]*allow_admin_panel/) {
-          if (!p) { print "allow_admin_panel = Off"; p=1 }
+        if (l ~ "^[[:space:]]*" key "[[:space:]]*=") {
+          if (!p) { print key " = " val; p=1 }
           continue
         }
         print l
-        if (i==sec && !hit) { print "allow_admin_panel = Off"; p=1 }
+        if (i==sec && !hit) { print key " = " val; p=1 }
       }
-      if (!p) { print ""; print "[security]"; print "allow_admin_panel = Off" }
+      if (!p) { print ""; print sect; print key " = " val }
     }' "$f" > "$tmp"
   mv "$tmp" "$f"
 }
@@ -127,6 +127,14 @@ SSH_PORT="${SSH_PORT:-}"
 INSTALL_FAIL2BAN="${INSTALL_FAIL2BAN:-}"
 MAX_MESSAGE_SIZE="${MAX_MESSAGE_SIZE:-5M}"
 JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-500M}"
+WEBMAIL_TITLE="${WEBMAIL_TITLE:-}"
+# the theme draws its accent line above this text, so it needs to be there;
+# "Sign in" is what the design uses
+WEBMAIL_LOGIN_TEXT="${WEBMAIL_LOGIN_TEXT:-Sign in}"
+WEBMAIL_THEME="${WEBMAIL_THEME:-}"
+WEBMAIL_FAVICON="${WEBMAIL_FAVICON:-}"
+THEME_SRC="$SCRIPT_DIR/webmail-theme"
+THEME_NAME="Nocturne"
 
 if [[ -z "$DOMAINS" && -f domains.txt ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -191,6 +199,10 @@ SSH_PORT=${SSH_PORT}
 INSTALL_FAIL2BAN=${INSTALL_FAIL2BAN}
 MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE}
 JOURNAL_MAX_SIZE=${JOURNAL_MAX_SIZE}
+WEBMAIL_TITLE=${WEBMAIL_TITLE}
+WEBMAIL_LOGIN_TEXT=${WEBMAIL_LOGIN_TEXT}
+WEBMAIL_THEME=${WEBMAIL_THEME}
+WEBMAIL_FAVICON=${WEBMAIL_FAVICON}
 CONF
   chmod 600 "$CONFIG_FILE"
   echo "  (answers saved to ${CONFIG_FILE})"
@@ -580,11 +592,38 @@ else
 }
 JSON
 
+  SM_INI="$WEBROOT/data/_data_/_default_/configs/application.ini"
+  mkdir -p "$(dirname "$SM_INI")"
+
   # the setup writes the domain config itself, so nobody needs /?admin - and an
   # exposed admin panel can repoint IMAP or enable plugins
-  mkdir -p "$WEBROOT/data/_data_/_default_/configs"
-  snappymail_disable_admin "$WEBROOT/data/_data_/_default_/configs/application.ini"
+  ini_set "$SM_INI" security allow_admin_panel Off
   echo "    SnappyMail admin panel disabled."
+
+  # themes live inside the versioned directory, so a SnappyMail update wipes
+  # them - copying on every run is what makes the custom one survive
+  if [[ -d "$THEME_SRC" ]]; then
+    THEME_DST=""
+    for d in "$WEBROOT"/snappymail/v/*/themes; do [[ -d "$d" ]] && THEME_DST="$d"; done
+    if [[ -n "$THEME_DST" && -f "$THEME_SRC/styles.css" ]]; then
+      rm -rf "${THEME_DST:?}/${THEME_NAME}"
+      mkdir -p "${THEME_DST}/${THEME_NAME}"
+      cp "$THEME_SRC/styles.css" "${THEME_DST}/${THEME_NAME}/"
+      # assets referenced from styles.css - fonts are bundled so the login
+      # page never calls out to a CDN
+      for sub in images fonts; do
+        [[ -d "$THEME_SRC/$sub" ]] && cp -r "$THEME_SRC/$sub" "${THEME_DST}/${THEME_NAME}/"
+      done
+      # the folder is only listed as a theme if styles.css is there
+      echo "    Theme '${THEME_NAME}' installed from webmail-theme/."
+      [[ -z "$WEBMAIL_THEME" ]] && WEBMAIL_THEME="$THEME_NAME"
+    fi
+  fi
+
+  [[ -n "$WEBMAIL_THEME"      ]] && ini_set "$SM_INI" webmail theme "$WEBMAIL_THEME"
+  [[ -n "$WEBMAIL_TITLE"      ]] && ini_set "$SM_INI" webmail title "$WEBMAIL_TITLE"
+  [[ -n "$WEBMAIL_LOGIN_TEXT" ]] && ini_set "$SM_INI" webmail loading_description "$WEBMAIL_LOGIN_TEXT"
+  [[ -n "$WEBMAIL_FAVICON"    ]] && ini_set "$SM_INI" webmail favicon_url "$WEBMAIL_FAVICON"
 
   chown -R www-data:www-data "$WEBROOT"
 
