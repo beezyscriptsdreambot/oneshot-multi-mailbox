@@ -149,6 +149,9 @@ if [[ "$CMD" == "remove" ]]; then
   [[ "$ans" == "yes" ]] || { echo "Aborted."; exit 1; }
 
   trap restart_maddy EXIT
+  echo
+  echo "Note: maddy is stopped for a moment, so mail is not accepted while this"
+  echo "      runs. Sending servers retry, so nothing is lost."
   systemctl stop maddy 2>/dev/null || true
   for d in "${REMOVE[@]}"; do drop_from_domains_file "$d"; done
   read_domains

@@ -50,6 +50,55 @@ yesno() {
   esac
 }
 
+# put the Let's Encrypt cert on the mail ports and keep it there after renewals
+install_mail_cert() {
+  local le="/etc/letsencrypt/live/${MAIL_HOSTNAME}"
+  [[ -f "$le/fullchain.pem" ]] || return 1
+  install -m 0644 -o maddy -g maddy "$le/fullchain.pem" "$CERT_DIR/fullchain.pem"
+  install -m 0640 -o maddy -g maddy "$le/privkey.pem"   "$CERT_DIR/privkey.pem"
+  mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+  cat > /etc/letsencrypt/renewal-hooks/deploy/maddy-cert.sh <<HOOK
+#!/bin/sh
+set -e
+LE="/etc/letsencrypt/live/${MAIL_HOSTNAME}"
+DST="${CERT_DIR}"
+[ -f "\$LE/fullchain.pem" ] || exit 0
+install -m 0644 -o maddy -g maddy "\$LE/fullchain.pem" "\$DST/fullchain.pem"
+install -m 0640 -o maddy -g maddy "\$LE/privkey.pem"   "\$DST/privkey.pem"
+systemctl restart maddy || true
+HOOK
+  chmod +x /etc/letsencrypt/renewal-hooks/deploy/maddy-cert.sh
+  systemctl restart maddy || true
+  MAIL_CERT="trusted (Let's Encrypt)"
+}
+
+# set allow_admin_panel = Off without ever duplicating the key or the section
+snappymail_disable_admin() {
+  local f="$1" tmp
+  if [[ ! -f "$f" ]]; then
+    printf '[security]\nallow_admin_panel = Off\n' > "$f"
+    return
+  fi
+  tmp="$(mktemp)"
+  awk '
+    { lines[NR]=$0 }
+    /^[[:space:]]*allow_admin_panel/ { hit=1 }
+    /^[[:space:]]*\[security\]/      { sec=NR }
+    END {
+      for (i=1;i<=NR;i++) {
+        l=lines[i]
+        if (l ~ /^[[:space:]]*allow_admin_panel/) {
+          if (!p) { print "allow_admin_panel = Off"; p=1 }
+          continue
+        }
+        print l
+        if (i==sec && !hit) { print "allow_admin_panel = Off"; p=1 }
+      }
+      if (!p) { print ""; print "[security]"; print "allow_admin_panel = Off" }
+    }' "$f" > "$tmp"
+  mv "$tmp" "$f"
+}
+
 # read the real SSH port so enabling the firewall can't lock anyone out
 detect_ssh_port() {
   local p
@@ -76,6 +125,8 @@ AUTO_UPDATES="${AUTO_UPDATES:-}"
 ENABLE_FIREWALL="${ENABLE_FIREWALL:-}"
 SSH_PORT="${SSH_PORT:-}"
 INSTALL_FAIL2BAN="${INSTALL_FAIL2BAN:-}"
+MAX_MESSAGE_SIZE="${MAX_MESSAGE_SIZE:-5M}"
+JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-500M}"
 
 if [[ -z "$DOMAINS" && -f domains.txt ]]; then
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -138,6 +189,8 @@ AUTO_UPDATES=${AUTO_UPDATES}
 ENABLE_FIREWALL=${ENABLE_FIREWALL}
 SSH_PORT=${SSH_PORT}
 INSTALL_FAIL2BAN=${INSTALL_FAIL2BAN}
+MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE}
+JOURNAL_MAX_SIZE=${JOURNAL_MAX_SIZE}
 CONF
   chmod 600 "$CONFIG_FILE"
   echo "  (answers saved to ${CONFIG_FILE})"
@@ -246,6 +299,8 @@ storage.imapsql local_mailboxes {
 }
 
 smtp tcp://0.0.0.0:25 {
+    # anything bigger is rejected at SMTP time, so it never touches the disk
+    max_message_size __MAXSIZE__
     limits {
         all rate 20 1s
         all concurrency 10
@@ -264,8 +319,9 @@ imap tls://0.0.0.0:993 tcp://0.0.0.0:143 {
     storage &local_mailboxes
 }
 MADDYCONF
-sed -i "s|__HOSTNAME__|${MAIL_HOSTNAME}|g; s|__DOMAINS__|${LOCAL_DOMAINS}|g" "$CONF"
+sed -i "s|__HOSTNAME__|${MAIL_HOSTNAME}|g; s|__DOMAINS__|${LOCAL_DOMAINS}|g; s|__MAXSIZE__|${MAX_MESSAGE_SIZE}|g" "$CONF"
 chmod 644 "$CONF"
+echo "    Message size limit: ${MAX_MESSAGE_SIZE}"
 
 step "[6/11] systemd service"
 cat > /etc/systemd/system/maddy.service <<'UNIT'
@@ -292,8 +348,9 @@ UNIT
 systemctl daemon-reload
 
 step "[7/11] Firewall + starting Maddy"
-FW_PORTS=("$SSH_PORT" 25 143 993)
-yesno "$INSTALL_WEBMAIL" && FW_PORTS+=(80 443)
+# 80 is needed either way - Let's Encrypt validates over it, also on renewal
+FW_PORTS=("$SSH_PORT" 25 143 993 80)
+yesno "$INSTALL_WEBMAIL" && FW_PORTS+=(443)
 FIREWALL_STATE="off"
 if yesno "$ENABLE_FIREWALL"; then
   apt-get install -y ufw >/dev/null
@@ -397,7 +454,29 @@ fi
 # --- webmail ---------------------------------------------------------------
 
 WEBMAIL_OK=skipped
-if yesno "$INSTALL_WEBMAIL"; then
+CERT_SERVICES=""
+if ! yesno "$INSTALL_WEBMAIL"; then
+  step "[9/11] Mail certificate (Let's Encrypt)"
+  # no nginx here, so certbot serves the challenge on port 80 itself
+  apt-get install -y certbot >/dev/null
+  CERTBOT_ARGS=(--register-unsafely-without-email)
+  [[ -n "$LETSENCRYPT_EMAIL" ]] && CERTBOT_ARGS=(-m "$LETSENCRYPT_EMAIL")
+  if certbot certonly --standalone -d "$MAIL_HOSTNAME" \
+       --non-interactive --agree-tos "${CERTBOT_ARGS[@]}"; then
+    systemctl enable --now certbot.timer >/dev/null 2>&1 \
+      || echo "WARNING: could not enable certbot.timer - renew manually." >&2
+    CERT_SERVICES="certbot.timer"
+    if install_mail_cert; then
+      echo "    Mail ports now use a trusted certificate."
+    else
+      echo "WARNING: certificate issued but not found - keeping the self-signed one." >&2
+    fi
+  else
+    echo "WARNING: Let's Encrypt failed - keeping the self-signed certificate." >&2
+    echo "         Port 80 reachable? A record correct? Then re-run:" >&2
+    echo "         certbot certonly --standalone -d ${MAIL_HOSTNAME}" >&2
+  fi
+else
   step "[9/11] Webmail (SnappyMail + nginx + Let's Encrypt)"
   apt-get install -y nginx certbot python3-certbot-nginx \
     php-fpm php-cli php-curl php-xml php-mbstring php-zip php-intl php-gd php-sqlite3
@@ -500,6 +579,13 @@ if yesno "$INSTALL_WEBMAIL"; then
     "whiteList": ""
 }
 JSON
+
+  # the setup writes the domain config itself, so nobody needs /?admin - and an
+  # exposed admin panel can repoint IMAP or enable plugins
+  mkdir -p "$WEBROOT/data/_data_/_default_/configs"
+  snappymail_disable_admin "$WEBROOT/data/_data_/_default_/configs/application.ini"
+  echo "    SnappyMail admin panel disabled."
+
   chown -R www-data:www-data "$WEBROOT"
 
   # http only for now, certbot rewrites this to https below
@@ -547,24 +633,7 @@ NGINX
 
     # use the same cert for the mail ports so clients stop warning; the deploy
     # hook copies it again after each renewal
-    LE_DIR="/etc/letsencrypt/live/${MAIL_HOSTNAME}"
-    if [[ -f "$LE_DIR/fullchain.pem" ]]; then
-      install -m 0644 -o maddy -g maddy "$LE_DIR/fullchain.pem" "$CERT_DIR/fullchain.pem"
-      install -m 0640 -o maddy -g maddy "$LE_DIR/privkey.pem"   "$CERT_DIR/privkey.pem"
-      mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-      cat > /etc/letsencrypt/renewal-hooks/deploy/maddy-cert.sh <<HOOK
-#!/bin/sh
-set -e
-LE="/etc/letsencrypt/live/${MAIL_HOSTNAME}"
-DST="${CERT_DIR}"
-[ -f "\$LE/fullchain.pem" ] || exit 0
-install -m 0644 -o maddy -g maddy "\$LE/fullchain.pem" "\$DST/fullchain.pem"
-install -m 0640 -o maddy -g maddy "\$LE/privkey.pem"   "\$DST/privkey.pem"
-systemctl restart maddy || true
-HOOK
-      chmod +x /etc/letsencrypt/renewal-hooks/deploy/maddy-cert.sh
-      systemctl restart maddy || true
-      MAIL_CERT="trusted (Let's Encrypt)"
+    if install_mail_cert; then
       echo "    Mail ports now use the Let's Encrypt certificate."
     fi
   else
@@ -580,6 +649,16 @@ fi
 
 step "[10/11] Housekeeping"
 HOUSEKEEPING_SERVICES=""
+
+# maddy logs every rejected message; on a busy server an uncapped journal is a
+# second way to fill the disk that mail retention doesn't cover
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/99-maddy.conf <<EOF
+[Journal]
+SystemMaxUse=${JOURNAL_MAX_SIZE}
+EOF
+systemctl restart systemd-journald 2>/dev/null || true
+echo "    Journal capped at ${JOURNAL_MAX_SIZE}."
 
 if [[ "${RETENTION_DAYS:-0}" =~ ^[0-9]+$ ]] && [[ "${RETENTION_DAYS:-0}" -gt 0 ]]; then
   # maddy's CLI only deletes by message number, so go through IMAP instead -
@@ -800,6 +879,7 @@ echo " Maddy       : $( [[ "$MADDY_OK" == yes ]] && echo "running" || echo "NOT 
 echo " Mailboxes   : ${MAILBOX_COUNT} (logins in ${MAILBOX_DIR}/, one file per day)"
 echo " Firewall    : ${FIREWALL_STATE}"
 echo " fail2ban    : ${FAIL2BAN_STATE}"
+echo " Max mail    : ${MAX_MESSAGE_SIZE} (bigger messages are rejected)"
 echo
 echo " IMAP access : ${MAIL_HOSTNAME}   port 993 (SSL/TLS)"
 echo "               certificate: ${MAIL_CERT:-self-signed -> accept it in your client}"
@@ -814,7 +894,7 @@ echo " Create more mailboxes:  ./create-mailboxes.sh <count> [domain|--all]"
 echo " Add/remove domains   :  ./manage-domains.sh add|remove|list"
 echo "------------------------------------------------------------"
 echo " Auto-start after a reboot:"
-for svc in maddy ${WEBMAIL_SERVICES:-} ${HOUSEKEEPING_SERVICES:-} ${SECURITY_SERVICES:-}; do
+for svc in maddy ${WEBMAIL_SERVICES:-} ${CERT_SERVICES:-} ${HOUSEKEEPING_SERVICES:-} ${SECURITY_SERVICES:-}; do
   if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
     echo "   [x] ${svc} - enabled"
   else

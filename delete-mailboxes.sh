@@ -109,6 +109,9 @@ restart_maddy() {
   systemctl start maddy 2>/dev/null || true
 }
 trap restart_maddy EXIT
+echo
+echo "Note: maddy is stopped for a moment, so mail is not accepted while this"
+echo "      runs. Sending servers retry, so nothing is lost."
 systemctl stop maddy 2>/dev/null || true
 
 deleted=0

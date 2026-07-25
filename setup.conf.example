@@ -38,3 +38,12 @@ SSH_PORT=22
 # fail2ban: bans an IP for an hour after 5 failed SSH or IMAP logins in
 # 10 minutes. Without it, nothing limits password guessing.
 INSTALL_FAIL2BAN=yes
+
+# Largest message accepted. Anything bigger is rejected while it is still being
+# sent, so it never reaches the disk. Note that 5M turns away most mail with
+# photos attached - raise it to 25M if you expect real attachments.
+MAX_MESSAGE_SIZE=5M
+
+# Cap for the systemd journal. Maddy logs every rejected message, so without a
+# limit the log is a second way to fill the disk.
+JOURNAL_MAX_SIZE=500M

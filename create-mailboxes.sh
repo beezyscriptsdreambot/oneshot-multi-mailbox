@@ -109,6 +109,10 @@ restart_maddy() {
 trap 'rm -f "$TMP"; restart_maddy' EXIT
 
 # stop maddy so the CLI doesn't fight it over the sqlite files
+echo
+echo "Note: maddy is stopped while the mailboxes are written, so mail is not"
+echo "      accepted for a moment. Sending servers retry for days, so nothing"
+echo "      is lost - it just arrives a little later."
 systemctl stop maddy 2>/dev/null || true
 
 # one file per day - a second run on the same day appends to it

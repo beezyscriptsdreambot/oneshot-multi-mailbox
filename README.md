@@ -57,8 +57,8 @@ closed by default, so open the ports there too.
 |--|--|--|--|
 | **22** | TCP | SSH — don't lock yourself out | your IP or `0.0.0.0/0` |
 | **25** | TCP | **receiving mail** — nothing arrives without it | `0.0.0.0/0` |
-| **80** | TCP | Let's Encrypt renewal + HTTP→HTTPS redirect | `0.0.0.0/0` |
-| **443** | TCP | webmail | `0.0.0.0/0` |
+| **80** | TCP | Let's Encrypt issuing + renewal — needed **even without webmail** | `0.0.0.0/0` |
+| **443** | TCP | webmail (only if installed) | `0.0.0.0/0` |
 | **993** | TCP | IMAP over TLS (mail apps) | `0.0.0.0/0` |
 | 143 | TCP | IMAP+STARTTLS — optional, 993 is usually enough | `0.0.0.0/0` |
 
@@ -66,9 +66,9 @@ closed by default, so open the ports there too.
 > servers worldwide, so the source cannot be restricted. Only port 22 can
 > sensibly be limited to your own IP.
 
-> **Port 80 matters even though webmail runs on 443.** certbot renews the
-> certificate over port 80 every 90 days — close it and HTTPS works today but
-> silently breaks in three months.
+> **Port 80 matters even if you skip the webmail.** certbot validates over port
+> 80 every 90 days, and the mail ports use the same certificate. Close it and
+> TLS works today but silently breaks in three months.
 
 > ⚠️ **Port 25 is special.** Nearly every provider blocks it by default to fight
 > spam, and a panel firewall rule often isn't enough — the block sits in their
@@ -168,6 +168,12 @@ Each run:
 
 At the end it logs into one of the new mailboxes over IMAP to confirm the
 password actually works, instead of assuming the account creation succeeded.
+
+> **Maddy is stopped while this runs**, because the CLI and the running server
+> would otherwise fight over the same SQLite files. Mail is refused for those
+> few seconds — sending servers retry for days, so nothing is lost, it just
+> arrives slightly later. Same applies to `delete-mailboxes.sh` and
+> `manage-domains.sh remove`.
 
 ```
 mariesmith@example.com:kP3nQx8ZmR2vLtY7bW4s
@@ -329,6 +335,13 @@ iptables.
 > `journalctl -u maddy | grep -i auth` clearly shows failed logins, the filter
 > in `/etc/fail2ban/filter.d/maddy.conf` needs its regex adjusted.
 
+### Webmail admin panel
+
+SnappyMail ships an admin panel at `/?admin` with its own password. The setup
+writes the whole domain configuration itself, so nothing there is ever needed —
+and it's disabled (`allow_admin_panel = Off`). One less thing exposed to the
+internet.
+
 ### Adding them later
 
 Set the values in `setup.conf` and re-run `sudo ./setup.sh` — it only adds what
@@ -349,7 +362,7 @@ password from the batch file in `mailboxes/`.
 | Port | **993**, SSL/TLS |
 | User | the full address, e.g. `mariesmith@example.com` |
 | Password | from `mailboxes/mailboxes-<date>.txt` |
-| Certificate | trusted (Let's Encrypt) if webmail was installed, otherwise self-signed |
+| Certificate | trusted (Let's Encrypt), with or without webmail |
 
 Every user only sees their own mailbox. The username is always the **full
 address** — not just the part before the `@`.
@@ -389,9 +402,11 @@ Don't forget the **MX record** for each new domain.
 Configured in `setup.conf`:
 
 ```bash
-RETENTION_DAYS=30    # delete mail older than 30 days (0 = keep forever)
-BACKUP_DAYS=7        # keep 7 days of database backups (0 = none)
-AUTO_UPDATES=yes     # unattended security updates
+RETENTION_DAYS=30     # delete mail older than 30 days (0 = keep forever)
+BACKUP_DAYS=7         # keep 7 days of database backups (0 = none)
+AUTO_UPDATES=yes      # unattended security updates
+MAX_MESSAGE_SIZE=5M   # reject anything bigger, before it hits the disk
+JOURNAL_MAX_SIZE=500M # cap the systemd journal
 ```
 
 | What | How |
@@ -399,6 +414,17 @@ AUTO_UPDATES=yes     # unattended security updates
 | **Old mail deleted** | daily via `maddy-cleanup.timer`, using IMAP `SEARCH BEFORE` across every folder |
 | **Backups** | daily to `/var/backups/maddy`, online-safe `sqlite3 .backup`, rotated |
 | **Security updates** | `unattended-upgrades` |
+| **Message size** | `max_message_size` in `maddy.conf` — rejected during transfer, so nothing is stored |
+| **Log size** | `SystemMaxUse` in `/etc/systemd/journald.conf.d/99-maddy.conf` |
+
+> ⚠️ **`MAX_MESSAGE_SIZE=5M` is deliberately strict.** A single phone photo is
+> often 3–8 MB, so mail with attachments gets **rejected**, and the sender sees
+> a bounce. That is the point — it keeps the disk from filling — but if you
+> expect real attachments, set `MAX_MESSAGE_SIZE=25M` and re-run `./setup.sh`.
+
+Retention alone doesn't protect the disk: without a size limit one large
+attachment lands on it immediately, and without a journal cap the *log* grows
+instead of the mail. Those are the two extra guards.
 
 ```bash
 systemctl list-timers 'maddy-*'
