@@ -412,6 +412,7 @@ JOURNAL_MAX_SIZE=500M # cap the systemd journal
 | What | How |
 |--|--|
 | **Old mail deleted** | daily via `maddy-cleanup.timer`, using IMAP `SEARCH BEFORE` across every folder |
+| **Space given back** | the same timer then runs `VACUUM`, which is what actually shrinks the file on disk |
 | **Backups** | daily to `/var/backups/maddy`, online-safe `sqlite3 .backup`, rotated |
 | **Security updates** | `unattended-upgrades` |
 | **Message size** | `max_message_size` in `maddy.conf` — rejected during transfer, so nothing is stored |
@@ -428,9 +429,32 @@ instead of the mail. Those are the two extra guards.
 
 ```bash
 systemctl list-timers 'maddy-*'
-systemctl start maddy-cleanup.service   # run the cleanup now
-journalctl -u maddy-cleanup -n 20
+systemctl start maddy-cleanup.service   # delete old mail + reclaim space now
+journalctl -u maddy-cleanup -n 30
+du -sh /var/lib/maddy                   # how much the mail actually uses
 ```
+
+### Why deleting mail alone doesn't free the disk
+
+Removing messages marks pages free *inside* the SQLite file, but the file keeps
+its size — the space gets reused for new mail instead of going back to the
+filesystem. `df -h` would show no change. So the cleanup runs in two steps:
+
+1. `maddy-cleanup` deletes mail older than `RETENTION_DAYS` over IMAP
+2. `maddy-vacuum` rebuilds the database file, which is what returns the space
+
+The second step only runs when at least **20%** of the file is reclaimable, so
+it doesn't rewrite a large database every single night. It also skips the
+rebuild if the filesystem hasn't got room for a temporary copy, and **stops
+maddy for the few seconds it takes** — SQLite needs the file to itself. If
+nothing is worth reclaiming, maddy is never stopped at all.
+
+```bash
+/usr/local/bin/maddy-vacuum              # force it now
+VACUUM_MIN_FREE_PCT=5 /usr/local/bin/maddy-vacuum   # be more eager
+```
+
+The 20% threshold lives in `/etc/systemd/system/maddy-cleanup.service`.
 
 > The cleanup logs in over IMAP using the passwords in `mailboxes/`. If you
 > change a password by hand, update that file too, or the mailbox is skipped

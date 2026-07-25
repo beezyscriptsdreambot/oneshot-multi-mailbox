@@ -748,9 +748,63 @@ print("done: %d message(s) older than %d day(s) deleted" % (total, days))
 PYEOF
   chmod +x /usr/local/bin/maddy-cleanup
 
+  apt-get install -y sqlite3 >/dev/null
+  # deleting mail only frees pages inside the sqlite file - the file itself
+  # keeps its size, so without this the space never returns to the filesystem
+  cat > /usr/local/bin/maddy-vacuum <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+MIN_PCT="${VACUUM_MIN_FREE_PCT:-20}"
+stopped=no
+
+finish() {
+  if [ "$stopped" = yes ]; then
+    chown -R maddy:maddy /var/lib/maddy 2>/dev/null || true
+    systemctl start maddy 2>/dev/null || true
+  fi
+}
+trap finish EXIT
+
+for db in /var/lib/maddy/*.db; do
+  [ -e "$db" ] || continue
+  name="$(basename "$db")"
+  pages="$(sqlite3 "$db" 'PRAGMA page_count;' 2>/dev/null || echo 0)"
+  freed="$(sqlite3 "$db" 'PRAGMA freelist_count;' 2>/dev/null || echo 0)"
+  [ "$pages" -gt 0 ] 2>/dev/null || continue
+
+  pct=$(( freed * 100 / pages ))
+  if [ "$pct" -lt "$MIN_PCT" ]; then
+    echo "${name}: ${pct}% reclaimable, below ${MIN_PCT}% - skipped"
+    continue
+  fi
+
+  # VACUUM builds a full copy before replacing the original
+  size_kb="$(du -k "$db" | cut -f1)"
+  avail_kb="$(df -Pk /var/lib/maddy | awk 'NR==2{print $4}')"
+  if [ "$avail_kb" -lt $(( size_kb * 2 )) ]; then
+    echo "${name}: not enough free disk to rebuild it - skipped" >&2
+    continue
+  fi
+
+  # sqlite needs the file to itself for this
+  if [ "$stopped" = no ]; then
+    systemctl stop maddy 2>/dev/null || true
+    stopped=yes
+  fi
+
+  before="$(du -h "$db" | cut -f1)"
+  sqlite3 "$db" 'VACUUM;'
+  echo "${name}: ${before} -> $(du -h "$db" | cut -f1) (${pct}% was reclaimable)"
+done
+
+[ "$stopped" = yes ] && echo "maddy was stopped briefly to rebuild the files." || true
+EOF
+  chmod +x /usr/local/bin/maddy-vacuum
+
   cat > /etc/systemd/system/maddy-cleanup.service <<UNIT
 [Unit]
-Description=Delete old mail from Maddy mailboxes
+Description=Delete old mail from Maddy mailboxes and reclaim the space
 After=maddy.service
 Requires=maddy.service
 
@@ -759,7 +813,10 @@ Type=oneshot
 Environment=RETENTION_DAYS=${RETENTION_DAYS}
 Environment=MAILBOX_DIR=${MAILBOX_DIR}
 Environment=LEGACY_MAILBOX_FILE=${LEGACY_MAILBOX_FILE}
+Environment=VACUUM_MIN_FREE_PCT=20
+# first delete the old mail over IMAP, then shrink the files it freed up
 ExecStart=/usr/local/bin/maddy-cleanup
+ExecStart=/usr/local/bin/maddy-vacuum
 UNIT
 
   cat > /etc/systemd/system/maddy-cleanup.timer <<'UNIT'
@@ -777,7 +834,8 @@ UNIT
   systemctl daemon-reload
   systemctl enable --now maddy-cleanup.timer >/dev/null 2>&1 || true
   HOUSEKEEPING_SERVICES="$HOUSEKEEPING_SERVICES maddy-cleanup.timer"
-  echo "    Mail older than ${RETENTION_DAYS} days is deleted daily."
+  echo "    Mail older than ${RETENTION_DAYS} days is deleted daily,"
+  echo "    then the database is shrunk so the disk space comes back."
 else
   systemctl disable --now maddy-cleanup.timer >/dev/null 2>&1 || true
   echo "    Mail retention: disabled."
