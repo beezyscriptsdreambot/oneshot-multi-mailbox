@@ -50,6 +50,14 @@ yesno() {
   esac
 }
 
+# Quote a value for setup.conf. Without this a title like "Example Mail" is
+# written bare, and sourcing the file on the next run treats the second word
+# as a command to execute. Single quotes stop $, backticks and spaces alike;
+# an embedded ' is closed, escaped and reopened. The substitution has to sit
+# outside the double quotes, or \' is read as a literal backslash-quote pair
+# and an apostrophe in the value produces a broken file.
+q() { local s=${1//\'/\'\\\'\'}; printf "'%s'" "$s"; }
+
 # put the Let's Encrypt cert on the mail ports and keep it there after renewals
 install_mail_cert() {
   local le="/etc/letsencrypt/live/${MAIL_HOSTNAME}"
@@ -80,7 +88,11 @@ ini_set() {
     return
   fi
   tmp="$(mktemp)"
-  awk -v sect="[$sect]" -v key="$key" -v val="$val" '
+  # via the environment, not -v: awk -v expands escape sequences, so a value
+  # containing \t or \n would be turned into a real tab or newline and the
+  # second one would break the file into pieces
+  INI_SECT="[$sect]" INI_KEY="$key" INI_VAL="$val" awk '
+    BEGIN { sect = ENVIRON["INI_SECT"]; key = ENVIRON["INI_KEY"]; val = ENVIRON["INI_VAL"] }
     { lines[NR]=$0 }
     $0 ~ "^[[:space:]]*" key "[[:space:]]*=" { hit=1 }
     index($0, sect) == 1 { sec=NR }
@@ -186,23 +198,23 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   cat > "$CONFIG_FILE" <<CONF
 # Written by setup.sh. Edit a value and re-run ./setup.sh to apply it.
 
-MAIL_HOSTNAME=${MAIL_HOSTNAME}
-DOMAINS="${DOMAIN_LIST[*]}"
-INSTALL_WEBMAIL=${INSTALL_WEBMAIL}
-LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
-INITIAL_MAILBOXES=${INITIAL_MAILBOXES}
-RETENTION_DAYS=${RETENTION_DAYS}
-BACKUP_DAYS=${BACKUP_DAYS}
-AUTO_UPDATES=${AUTO_UPDATES}
-ENABLE_FIREWALL=${ENABLE_FIREWALL}
-SSH_PORT=${SSH_PORT}
-INSTALL_FAIL2BAN=${INSTALL_FAIL2BAN}
-MAX_MESSAGE_SIZE=${MAX_MESSAGE_SIZE}
-JOURNAL_MAX_SIZE=${JOURNAL_MAX_SIZE}
-WEBMAIL_TITLE=${WEBMAIL_TITLE}
-WEBMAIL_LOGIN_TEXT=${WEBMAIL_LOGIN_TEXT}
-WEBMAIL_THEME=${WEBMAIL_THEME}
-WEBMAIL_FAVICON=${WEBMAIL_FAVICON}
+MAIL_HOSTNAME=$(q "$MAIL_HOSTNAME")
+DOMAINS=$(q "${DOMAIN_LIST[*]}")
+INSTALL_WEBMAIL=$(q "$INSTALL_WEBMAIL")
+LETSENCRYPT_EMAIL=$(q "$LETSENCRYPT_EMAIL")
+INITIAL_MAILBOXES=$(q "$INITIAL_MAILBOXES")
+RETENTION_DAYS=$(q "$RETENTION_DAYS")
+BACKUP_DAYS=$(q "$BACKUP_DAYS")
+AUTO_UPDATES=$(q "$AUTO_UPDATES")
+ENABLE_FIREWALL=$(q "$ENABLE_FIREWALL")
+SSH_PORT=$(q "$SSH_PORT")
+INSTALL_FAIL2BAN=$(q "$INSTALL_FAIL2BAN")
+MAX_MESSAGE_SIZE=$(q "$MAX_MESSAGE_SIZE")
+JOURNAL_MAX_SIZE=$(q "$JOURNAL_MAX_SIZE")
+WEBMAIL_TITLE=$(q "$WEBMAIL_TITLE")
+WEBMAIL_LOGIN_TEXT=$(q "$WEBMAIL_LOGIN_TEXT")
+WEBMAIL_THEME=$(q "$WEBMAIL_THEME")
+WEBMAIL_FAVICON=$(q "$WEBMAIL_FAVICON")
 CONF
   chmod 600 "$CONFIG_FILE"
   echo "  (answers saved to ${CONFIG_FILE})"
@@ -620,10 +632,14 @@ JSON
     fi
   fi
 
-  [[ -n "$WEBMAIL_THEME"      ]] && ini_set "$SM_INI" webmail theme "$WEBMAIL_THEME"
-  [[ -n "$WEBMAIL_TITLE"      ]] && ini_set "$SM_INI" webmail title "$WEBMAIL_TITLE"
-  [[ -n "$WEBMAIL_LOGIN_TEXT" ]] && ini_set "$SM_INI" webmail loading_description "$WEBMAIL_LOGIN_TEXT"
-  [[ -n "$WEBMAIL_FAVICON"    ]] && ini_set "$SM_INI" webmail favicon_url "$WEBMAIL_FAVICON"
+  # Free text goes in quoted: an unquoted ';' starts a comment in an ini file
+  # and would silently cut the value short. Booleans stay bare on purpose -
+  # PHP reads bare Off as false, but "Off" as a non-empty, truthy string.
+  istr() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; printf '"%s"' "$s"; }
+  [[ -n "$WEBMAIL_THEME"      ]] && ini_set "$SM_INI" webmail theme "$(istr "$WEBMAIL_THEME")"
+  [[ -n "$WEBMAIL_TITLE"      ]] && ini_set "$SM_INI" webmail title "$(istr "$WEBMAIL_TITLE")"
+  [[ -n "$WEBMAIL_LOGIN_TEXT" ]] && ini_set "$SM_INI" webmail loading_description "$(istr "$WEBMAIL_LOGIN_TEXT")"
+  [[ -n "$WEBMAIL_FAVICON"    ]] && ini_set "$SM_INI" webmail favicon_url "$(istr "$WEBMAIL_FAVICON")"
 
   chown -R www-data:www-data "$WEBROOT"
 
